@@ -4,6 +4,7 @@ import {User} from "../models/user.models.js"
 import {uploadOnCloudinary} from '../utils/cloudinary.js'
 import {ApiResponce} from '../utils/ApiResponce.js'
 import { error } from "console";
+import jwt from 'jsonwebtoken'
 
 
 const GenerateAccessAndRefreshTokens = async(userId)=>{
@@ -146,6 +147,49 @@ const loginUser = asyncHandler(async (req, res)=>{
 
 })
 
+const refreshAccessToken = asyncHandler( async (req, res)=>{
+    try {
+        const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
+    
+        if(!incomingRefreshToken){
+            throw new ApiError(401, "UnAuthorized Request")
+        }
+    
+        const decodedToken = jwt.verify(incomingRefreshToken, process.env.ACCESS_TOKEN_SECRET)
+    
+        const user = await User.findById(decodedToken?._id)
+    
+        if(!user){
+            throw new ApiError(401, "Invalid RefreshToken")
+        }
+    
+        if (incomingRefreshToken !== user?.refreshToken) {
+            throw new ApiError(401, "refresh Token is expired or Used..!")
+        }
+    
+        const option = {
+            httpOnly: true,
+            secure: true
+        }
+        const {accessToken, newRefreshToken} = await GenerateAccessAndRefreshTokens(user._id)
+    
+        return res
+        .status(200)
+        .cookie("accessToken", accessToken, option)
+        .cookie("refreshToken", newRefreshToken, option)
+        .json(
+            new ApiResponce(200, {
+                accessToken, refreshToken: newRefreshToken
+            },
+            "Access Token Refresh SuccessFully..!"
+        )
+        )
+    } catch (error) {
+        console.log("Error in refreshAccessToken", error)
+        throw new ApiError(401, error?.message || "Invalid Refresh Token")
+    }
+})
+
 const logoutUser = asyncHandler( async(req, res)=>{
     const userId = req.user._id
 
@@ -172,4 +216,4 @@ const logoutUser = asyncHandler( async(req, res)=>{
     .clearCookie("refreshToken", option)
     .json(new ApiResponce(200, {}, "user Logged Out..!"))
 })
-export {registerUser, loginUser, logoutUser}
+export {registerUser, loginUser, refreshAccessToken,logoutUser}
